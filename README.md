@@ -1,6 +1,6 @@
 # go-webext-action
 
-A GitHub Action wraps [adguardteam/go-webext](https://github.com/adguardteam/go-webext).
+A GitHub Action that wraps [adguardteam/go-webext](https://github.com/adguardteam/go-webext).
 
 ## Quick start
 
