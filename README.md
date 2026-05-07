@@ -25,6 +25,7 @@ A GitHub Action wraps [adguardteam/go-webext](https://github.com/adguardteam/go-
 | `browser` | yes | One of `chrome`, `firefox`, `edge`. |
 | `version` | no | go-webext version to install. Default `latest`. |
 | `go-version` | no | Go version for `actions/setup-go`. Default `stable`. Set to empty to skip and use Go already on PATH. |
+| `cache` | no | Cache the installed go-webext binary across runs, keyed on resolved version + OS + arch. `true`/`false`. Default `false`. |
 | `app-id` | no | Extension/item/product ID (`-a/--app`). |
 | `file` | no | Path to the extension archive (`-f/--file`). |
 | `source` | no | Path to the source archive — Firefox (`-s/--source`). |
