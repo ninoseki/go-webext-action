@@ -1,0 +1,192 @@
+name: go-webext
+description: Manage browser extensions on Chrome Web Store, Firefox AMO, and
+  Microsoft Edge Add-ons via go-webext.
+author: ninoseki
+branding:
+  icon: upload-cloud
+  color: blue
+
+inputs:
+  version:
+    description: Version of go-webext to install (e.g. "v0.4.1" or "latest").
+    required: false
+    default: latest
+  go-version:
+    description: Go version used to install go-webext. Skipped when Go is already on PATH.
+    required: false
+    default: stable
+
+  command:
+    description: "go-webext subcommand: status, insert, update, publish, or sign."
+    required: true
+  browser:
+    description: "Target store: chrome, firefox, or edge."
+    required: true
+
+  app-id:
+    description: Extension/item/product ID (passed as -a/--app).
+    required: false
+  file:
+    description: Path to the extension archive (passed as -f/--file).
+    required: false
+  source:
+    description: Path to the source archive — Firefox only (passed as -s/--source).
+    required: false
+  channel:
+    description: "Firefox update channel: listed or unlisted (passed as -c/--channel)."
+    required: false
+  approval-notes:
+    description: Notes for Mozilla reviewers — Firefox update/sign (passed as
+      -n/--approval-notes).
+    required: false
+  output:
+    description: Output path for the signed xpi — Firefox sign (passed as -o/--output).
+    required: false
+  target:
+    description: "Chrome v1 publish target: trustedTesters or default (passed as
+      -t/--target)."
+    required: false
+  expedited:
+    description: Chrome publish — request skip review if qualified (passed as
+      -e/--expedited).
+    required: false
+    default: "false"
+  staged:
+    description: Chrome v2 publish — stage instead of publishing immediately (passed
+      as -s/--staged).
+    required: false
+    default: "false"
+  percentage:
+    description: Chrome publish — gradual rollout percentage 0–100 (passed as
+      -p/--percentage).
+    required: false
+  timeout:
+    description: Edge update — upload timeout in seconds (passed as -t/--timeout).
+    required: false
+  verbose:
+    description: Enable debug-level logging (passed as -v/--verbose).
+    required: false
+    default: "false"
+
+  args:
+    description: Extra raw arguments appended to the go-webext invocation. Use for
+      flags this action doesn't expose yet.
+    required: false
+
+  working-directory:
+    description: Working directory for the go-webext invocation.
+    required: false
+    default: ${{ github.workspace }}
+
+outputs:
+  stdout:
+    description: Captured stdout from go-webext.
+    value: ${{ steps.run.outputs.stdout }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Go
+      if: inputs.go-version != ''
+      uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+      with:
+        go-version: ${{ inputs.go-version }}
+        cache: false
+
+    - name: Install go-webext
+      shell: bash
+      env:
+        GO_WEBEXT_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        echo "Installing github.com/adguardteam/go-webext@${GO_WEBEXT_VERSION}"
+        go install "github.com/adguardteam/go-webext@${GO_WEBEXT_VERSION}"
+        # `go install` places binaries in $GOBIN, then $GOPATH/bin, then $HOME/go/bin.
+        GOBIN_DIR="$(go env GOBIN)"
+        if [ -z "${GOBIN_DIR}" ]; then
+          GOBIN_DIR="$(go env GOPATH)/bin"
+        fi
+        echo "${GOBIN_DIR}" >> "${GITHUB_PATH}"
+        # The installed binary is named "go-webext" (matches the module's main package).
+        ls -l "${GOBIN_DIR}/go-webext"
+
+    - name: Run go-webext
+      id: run
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        INPUT_COMMAND: ${{ inputs.command }}
+        INPUT_BROWSER: ${{ inputs.browser }}
+        INPUT_APP_ID: ${{ inputs.app-id }}
+        INPUT_FILE: ${{ inputs.file }}
+        INPUT_SOURCE: ${{ inputs.source }}
+        INPUT_CHANNEL: ${{ inputs.channel }}
+        INPUT_APPROVAL_NOTES: ${{ inputs.approval-notes }}
+        INPUT_OUTPUT: ${{ inputs.output }}
+        INPUT_TARGET: ${{ inputs.target }}
+        INPUT_EXPEDITED: ${{ inputs.expedited }}
+        INPUT_STAGED: ${{ inputs.staged }}
+        INPUT_PERCENTAGE: ${{ inputs.percentage }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+        INPUT_VERBOSE: ${{ inputs.verbose }}
+        INPUT_ARGS: ${{ inputs.args }}
+      run: |
+        set -euo pipefail
+
+        case "${INPUT_COMMAND}" in
+          status|insert|update|publish|sign) ;;
+          *)
+            echo "::error::Unsupported command '${INPUT_COMMAND}'. Use one of: status, insert, update, publish, sign." >&2
+            exit 1
+            ;;
+        esac
+
+        case "${INPUT_BROWSER}" in
+          chrome|firefox|edge) ;;
+          *)
+            echo "::error::Unsupported browser '${INPUT_BROWSER}'. Use one of: chrome, firefox, edge." >&2
+            exit 1
+            ;;
+        esac
+
+        global_args=()
+        if [ "${INPUT_VERBOSE}" = "true" ]; then
+          global_args+=(--verbose)
+        fi
+
+        cmd_args=()
+        [ -n "${INPUT_APP_ID}" ]         && cmd_args+=(--app "${INPUT_APP_ID}")
+        [ -n "${INPUT_FILE}" ]           && cmd_args+=(--file "${INPUT_FILE}")
+        [ -n "${INPUT_SOURCE}" ]         && cmd_args+=(--source "${INPUT_SOURCE}")
+        [ -n "${INPUT_CHANNEL}" ]        && cmd_args+=(--channel "${INPUT_CHANNEL}")
+        [ -n "${INPUT_APPROVAL_NOTES}" ] && cmd_args+=(--approval-notes "${INPUT_APPROVAL_NOTES}")
+        [ -n "${INPUT_OUTPUT}" ]         && cmd_args+=(--output "${INPUT_OUTPUT}")
+        [ -n "${INPUT_TARGET}" ]         && cmd_args+=(--target "${INPUT_TARGET}")
+        [ -n "${INPUT_PERCENTAGE}" ]     && cmd_args+=(--percentage "${INPUT_PERCENTAGE}")
+        [ -n "${INPUT_TIMEOUT}" ]        && cmd_args+=(--timeout "${INPUT_TIMEOUT}")
+        [ "${INPUT_EXPEDITED}" = "true" ] && cmd_args+=(--expedited)
+        [ "${INPUT_STAGED}" = "true" ]    && cmd_args+=(--staged)
+
+        extra_args=()
+        if [ -n "${INPUT_ARGS}" ]; then
+          # shellcheck disable=SC2206
+          read -r -a extra_args <<< "${INPUT_ARGS}"
+        fi
+
+        echo "+ go-webext ${global_args[*]:-} ${INPUT_COMMAND} ${INPUT_BROWSER} ${cmd_args[*]:-} ${extra_args[*]:-}"
+
+        out_file="$(mktemp)"
+        set +e
+        go-webext "${global_args[@]}" "${INPUT_COMMAND}" "${INPUT_BROWSER}" "${cmd_args[@]}" "${extra_args[@]}" \
+          | tee "${out_file}"
+        status=${PIPESTATUS[0]}
+        set -e
+
+        {
+          echo 'stdout<<__GO_WEBEXT_EOF__'
+          cat "${out_file}"
+          echo '__GO_WEBEXT_EOF__'
+        } >> "${GITHUB_OUTPUT}"
+
+        rm -f "${out_file}"
+        exit "${status}"
